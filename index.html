@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#5146e5" />
+    <title>一歩ずつ</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p id="today-label" class="eyebrow"></p>
+          <h1 id="page-title">今日の一歩</h1>
+        </div>
+        <button class="avatar" aria-label="プロフィールを開く">佐</button>
+      </header>
+
+      <section id="home-view" class="view active" aria-labelledby="page-title">
+        <article class="hero-card">
+          <span class="hero-icon">✦</span>
+          <div><p class="eyebrow light">今日の進捗</p><strong><span id="done-count">0</span> / <span id="total-count">0</span> 完了</strong></div>
+          <div class="ring" id="progress-ring"><span id="progress-percent">0%</span></div>
+        </article>
+        <div class="section-heading"><h2>今日やること</h2><button id="add-action" class="text-button">＋ 追加</button></div>
+        <div id="action-list" class="action-list"></div>
+        <article class="gentle-note"><span>☁</span><p>できなかった日も大丈夫。理由は次の作戦を考えるためのヒントです。</p></article>
+      </section>
+
+      <section id="chat-view" class="view">
+        <div class="companion-card"><span>✦</span><div><strong>ここでは、急がなくて大丈夫。</strong><p>気になっていることを一緒にほどいていきましょう。</p></div></div>
+        <div id="chat-log" class="chat-log" aria-live="polite">
+          <div class="message ai">最近、「変えたいな」と思った場面はありましたか？</div>
+        </div>
+        <div class="suggestions"><button>つい後回しにしてしまう</button><button>続けられない</button><button>人と比べて落ち込む</button></div>
+        <form id="chat-form" class="chat-form"><input id="chat-input" aria-label="相談内容" placeholder="ここに気持ちを書いてみる" /><button aria-label="送信">↑</button></form>
+      </section>
+
+      <section id="review-view" class="view">
+        <article class="review-hero"><p class="eyebrow light">今週のふりかえり</p><h2>小さな一歩が、<br>ちゃんと積み重なっています。</h2><div class="week-chart" id="week-chart"></div></article>
+        <article class="stat-card"><p>今週の実行率</p><strong id="week-rate">0%</strong><span>先週より、少しずつ前へ</span></article>
+        <h2 class="subhead">あなたの変化</h2>
+        <article class="comparison"><div><span>3週間前</span><strong>記録 2日</strong></div><i>→</i><div class="now"><span>今週</span><strong id="change-copy">記録 0日</strong></div></article>
+      </section>
+
+      <section id="group-view" class="view">
+        <div class="group-head"><div><p class="eyebrow">TMC チャレンジ</p><h2>みんなの進捗</h2></div><button class="icon-button" aria-label="共有設定">⚙</button></div>
+        <p class="privacy-note">弱点の内容は共有されません。進捗だけを、ほどよい励みに。</p>
+        <div id="ranking" class="ranking"></div>
+      </section>
+
+      <nav class="bottom-nav" aria-label="メインメニュー">
+        <button class="nav-item active" data-view="home-view"><span>⌂</span>今日</button>
+        <button class="nav-item" data-view="chat-view"><span>✦</span>相談</button>
+        <button class="nav-item" data-view="review-view"><span>⌁</span>ふりかえる</button>
+        <button class="nav-item" data-view="group-view"><span>♧</span>みんな</button>
+      </nav>
+    </main>
+
+    <dialog id="result-dialog"><form method="dialog" class="dialog-card"><button class="close" value="cancel" aria-label="閉じる">×</button><p class="eyebrow">記録する</p><h2 id="dialog-action"></h2><div class="result-buttons"><button id="complete-action" value="complete">できた！</button><button id="skip-action" value="skip">今日はできなかった</button></div><div id="reason-area" hidden><p>よければ理由を教えてください</p><div class="reason-grid"><button type="button">忙しかった</button><button type="button">忘れていた</button><button type="button">気分が乗らなかった</button></div></div></form></dialog>
+    <dialog id="add-dialog"><form id="add-form" class="dialog-card"><button class="close" type="button" id="close-add" aria-label="閉じる">×</button><p class="eyebrow">新しい対策</p><h2>まずは小さく始めよう</h2><label>やること<input name="action" required placeholder="例：机に5分座る" /></label><label>タイミング<select name="time"><option>朝</option><option selected>夜</option><option>いつでも</option></select></label><button class="primary" type="submit">追加する</button></form></dialog>
+    <script src="./app.js"></script>
+  </body>
