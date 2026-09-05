@@ -103,27 +103,6 @@ const initialActions: Action[] = [
   },
 ];
 
-const ACTIONS_STORAGE_KEY = "weakness-support-actions-v1";
-const CHAT_STORAGE_KEY = "weakness-support-chat-v1";
-
-function loadActions(): Action[] {
-  try {
-    const saved = localStorage.getItem(ACTIONS_STORAGE_KEY);
-    return saved ? JSON.parse(saved) as Action[] : initialActions;
-  } catch {
-    return initialActions;
-  }
-}
-
-function loadMessages(): Message[] {
-  try {
-    const saved = localStorage.getItem(CHAT_STORAGE_KEY);
-    return saved ? JSON.parse(saved) as Message[] : [{ role: "ai", text: aiResponses[0] }];
-  } catch {
-    return [{ role: "ai", text: aiResponses[0] }];
-  }
-}
-
 const groupMembers: GroupMember[] = [
   { id: "me", name: "あなた", initials: "私", avatarBg: "#EAE8FF", avatarColor: "#4F46E5", streak: 12, rate: 83, actions: 3, isMe: true },
   { id: "u1", name: "田中 蓮", initials: "田", avatarBg: "#DBEAFE", avatarColor: "#2563EB", streak: 18, rate: 91, actions: 2 },
@@ -248,15 +227,26 @@ function WeekDots({ logs }: { logs: ActionLog[] }) {
 function HomeTab({
   actions,
   onToggle,
+  onGoToChat,
 }: {
   actions: Action[];
   onToggle: (id: string, done: boolean, reason?: string) => void;
+  onGoToChat: () => void;
 }) {
   const [failModal, setFailModal] = useState<string | null>(null);
   const [failReason, setFailReason] = useState("");
   const reasons = ["忙しかった", "忘れていた", "やる気が出なかった", "体調が悪かった"];
 
   const todayDone = (a: Action) => a.logs.find((l) => l.date === today)?.done;
+
+  // 要件⑥: AIによる伴走 ── 直近3日で2回以上「未実行」が続いている対策を検知する
+  const stagnant = actions.find((a) => {
+    const missed = [1, 2, 3].filter((offset) => {
+      const log = a.logs.find((l) => l.date === d(offset));
+      return log ? !log.done : false;
+    });
+    return missed.length >= 2;
+  });
 
   const handleFail = (id: string) => {
     setFailModal(id);
@@ -330,6 +320,39 @@ function HomeTab({
           </div>
         </div>
       </div>
+
+      {/* AI伴走バナー（要件⑥）: 未実行が続いている対策があれば、責めずに相談を促す */}
+      {stagnant && (
+        <div className="px-5 pb-1">
+          <button
+            onClick={onGoToChat}
+            className="w-full rounded-2xl p-4 flex items-start gap-3 text-left transition-all active:scale-[0.98]"
+            style={{ background: "#EAE8FF", border: "1px solid #C7D2FE" }}
+          >
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+              style={{ background: "#FFFFFF" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4F46E5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold" style={{ color: "#4F46E5" }}>
+                「{stagnant.weaknessLabel}」の対策、続けるのが難しいですか？
+              </p>
+              <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "#4F46E5", opacity: 0.85 }}>
+                無理のないペースに調整できます。AIと一緒に見直してみましょう。
+              </p>
+            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4F46E5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-1 flex-shrink-0">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div className="h-px mx-5" style={{ background: "#E8E7E2" }} />
 
@@ -487,20 +510,40 @@ function HomeTab({
 
 // ── ChatTab ────────────────────────────────────────────────────────────────────
 
-function ChatTab() {
-  const [messages, setMessages] = useState<Message[]>(loadMessages);
+function ChatTab({
+  onCreateAction,
+  onGoHome,
+}: {
+  onCreateAction: (draft: {
+    weaknessLabel: string;
+    content: string;
+    frequency: string;
+    timing: string;
+    difficulty: number;
+  }) => void;
+  onGoHome: () => void;
+}) {
+  const [messages, setMessages] = useState<Message[]>([
+    { role: "ai", text: aiResponses[0] },
+  ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [turn, setTurn] = useState(0);
+  const [showDesigner, setShowDesigner] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+
+  // 要件②: 対策設計フォームの状態（AIの提案を初期値に、ユーザーが編集・難易度調整できる）
+  const [draftLabel, setDraftLabel] = useState("行動の先延ばし");
+  const [draftContent, setDraftContent] = useState("気づいた瞬間をメモに1行書くだけにする");
+  const [draftFrequency, setDraftFrequency] = useState("毎日");
+  const [draftTiming, setDraftTiming] = useState("夜");
+  const [draftDifficulty, setDraftDifficulty] = useState(1);
+
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
-
-  useEffect(() => {
-    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
-  }, [messages]);
+  }, [messages, isTyping, showDesigner]);
 
   const send = () => {
     if (!input.trim()) return;
@@ -508,12 +551,35 @@ function ChatTab() {
     setInput("");
     setMessages((m) => [...m, { role: "user", text: userMsg }]);
     setIsTyping(true);
+    const isLastTurn = turn + 1 >= Object.keys(aiResponses).length - 1;
     const nextTurn = Math.min(turn + 1, Object.keys(aiResponses).length - 1);
     setTimeout(() => {
       setIsTyping(false);
       setMessages((m) => [...m, { role: "ai", text: aiResponses[nextTurn] }]);
       setTurn(nextTurn);
+      if (isLastTurn) setShowDesigner(true);
     }, 1200 + Math.random() * 800);
+  };
+
+  const difficultyLabels = ["最小（1〜3分）", "小さめ（5〜10分）", "標準"];
+
+  const confirmDesign = () => {
+    onCreateAction({
+      weaknessLabel: draftLabel,
+      content: draftContent,
+      frequency: draftFrequency,
+      timing: draftTiming,
+      difficulty: draftDifficulty,
+    });
+    setShowDesigner(false);
+    setConfirmed(true);
+    setMessages((m) => [
+      ...m,
+      {
+        role: "ai",
+        text: `対策を「今日」のリストに追加しました。\n\n${draftContent}（${draftFrequency}・${draftTiming}）\n\nできなかった日があっても大丈夫です。まずは小さく続けることを一緒に見ていきましょう。`,
+      },
+    ]);
   };
 
   return (
@@ -599,6 +665,118 @@ function ChatTab() {
             </div>
           </div>
         )}
+
+        {/* 対策設計カード（要件②）: AIの提案を受けて、最小単位のアクションに落とし込む */}
+        {showDesigner && (
+          <div className="flex items-end gap-2 justify-start">
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: "#EAE8FF" }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4F46E5" strokeWidth="2" strokeLinecap="round">
+                <circle cx="12" cy="12" r="10" />
+              </svg>
+            </div>
+            <div
+              className="max-w-[86%] w-full rounded-[20px] rounded-bl-[4px] p-4 space-y-4"
+              style={{ background: "#FFFFFF", border: "1px solid #E8E7E2" }}
+            >
+              <p className="text-[13px] font-bold">対策を設計する</p>
+
+              <div>
+                <label className="text-[11px] font-semibold" style={{ color: "#9391A0" }}>弱点（ラベル）</label>
+                <input
+                  className="w-full mt-1 text-[13px] px-3 py-2.5 rounded-xl outline-none"
+                  style={{ background: "#F7F6F3", border: "1px solid #E8E7E2", color: "#141318" }}
+                  value={draftLabel}
+                  onChange={(e) => setDraftLabel(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold" style={{ color: "#9391A0" }}>最小単位のアクション</label>
+                <input
+                  className="w-full mt-1 text-[13px] px-3 py-2.5 rounded-xl outline-none"
+                  style={{ background: "#F7F6F3", border: "1px solid #E8E7E2", color: "#141318" }}
+                  value={draftContent}
+                  onChange={(e) => setDraftContent(e.target.value)}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[11px] font-semibold" style={{ color: "#9391A0" }}>頻度</label>
+                  <select
+                    className="w-full mt-1 text-[13px] px-3 py-2.5 rounded-xl outline-none"
+                    style={{ background: "#F7F6F3", border: "1px solid #E8E7E2", color: "#141318" }}
+                    value={draftFrequency}
+                    onChange={(e) => setDraftFrequency(e.target.value)}
+                  >
+                    <option>毎日</option>
+                    <option>週5回</option>
+                    <option>週3回</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="text-[11px] font-semibold" style={{ color: "#9391A0" }}>タイミング</label>
+                  <select
+                    className="w-full mt-1 text-[13px] px-3 py-2.5 rounded-xl outline-none"
+                    style={{ background: "#F7F6F3", border: "1px solid #E8E7E2", color: "#141318" }}
+                    value={draftTiming}
+                    onChange={(e) => setDraftTiming(e.target.value)}
+                  >
+                    <option>朝</option>
+                    <option>午前</option>
+                    <option>夜</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center">
+                  <label className="text-[11px] font-semibold" style={{ color: "#9391A0" }}>難易度</label>
+                  <span className="text-[11px] font-semibold" style={{ color: "#4F46E5" }}>
+                    {difficultyLabels[draftDifficulty - 1]}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={3}
+                  step={1}
+                  value={draftDifficulty}
+                  onChange={(e) => setDraftDifficulty(Number(e.target.value))}
+                  className="w-full mt-2"
+                  style={{ accentColor: "#4F46E5" }}
+                />
+                <p className="text-[11px] mt-1" style={{ color: "#9391A0" }}>
+                  迷ったら「最小」から。あとからいつでも調整できます。
+                </p>
+              </div>
+
+              <button
+                onClick={confirmDesign}
+                className="w-full py-3 rounded-xl font-bold text-[13px]"
+                style={{ background: "#141318", color: "#fff" }}
+              >
+                この内容で対策を確定する
+              </button>
+            </div>
+          </div>
+        )}
+
+        {confirmed && (
+          <div className="flex justify-center">
+            <button
+              onClick={onGoHome}
+              className="text-[12px] font-semibold px-4 py-2 rounded-full"
+              style={{ background: "#EAE8FF", color: "#4F46E5" }}
+            >
+              「今日」の画面で確認する →
+            </button>
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
@@ -843,6 +1021,11 @@ function ProgressTab({ actions }: { actions: Action[] }) {
 
 function SocialTab() {
   const [rankBy, setRankBy] = useState<"streak" | "rate">("streak");
+  const [showInvite, setShowInvite] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [shareProgress] = useState(true); // 進捗（実行率・継続日数）は既定で共有・変更不可
+  const [shareWeaknessContent, setShareWeaknessContent] = useState(false); // 弱点の内容は既定で非公開
+  const inviteCode = "TMC-KEMPO-7X2Q";
   const sorted = [...groupMembers].sort((a, b) =>
     rankBy === "streak" ? b.streak - a.streak : b.rate - a.rate
   );
@@ -850,7 +1033,7 @@ function SocialTab() {
   const rankColors = ["#D97706", "#6B7280", "#92400E"];
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto" style={{ background: "#F7F6F3" }}>
+    <div className="relative flex flex-col h-full overflow-y-auto" style={{ background: "#F7F6F3" }}>
       <div className="px-5 pt-8 pb-5">
         <div className="flex items-start justify-between">
           <div>
@@ -860,6 +1043,7 @@ function SocialTab() {
             </p>
           </div>
           <button
+            onClick={() => setShowInvite(true)}
             className="text-[13px] px-3.5 py-2 rounded-full font-semibold transition-all"
             style={{ background: "#141318", color: "#fff" }}
           >
@@ -984,6 +1168,7 @@ function SocialTab() {
             進捗（実行率・継続日数）のみ共有中。弱点の内容は非公開。
           </p>
           <button
+            onClick={() => setShowPrivacy(true)}
             className="mt-3 text-[12px] font-semibold"
             style={{ color: "#4F46E5" }}
           >
@@ -993,6 +1178,117 @@ function SocialTab() {
 
         <div className="h-4" />
       </div>
+
+      {/* 招待モーダル */}
+      {showInvite && (
+        <div
+          className="absolute inset-0 flex items-end"
+          style={{ background: "#00000060", zIndex: 50 }}
+          onClick={() => setShowInvite(false)}
+        >
+          <div
+            className="w-full rounded-t-3xl p-6 space-y-4"
+            style={{ background: "#FFFFFF" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 rounded-full mx-auto" style={{ background: "#E8E7E2" }} />
+            <h3 className="font-bold text-[17px] mt-2">グループに招待する</h3>
+            <p className="text-[13px] leading-relaxed" style={{ color: "#9391A0" }}>
+              招待した相手には、あなたの進捗（実行率・継続日数）のみが共有されます。弱点の内容は共有範囲の設定に従います。
+            </p>
+            <div
+              className="flex items-center justify-between px-4 py-3.5 rounded-2xl"
+              style={{ background: "#F7F6F3", border: "1px solid #E8E7E2" }}
+            >
+              <span
+                className="text-[14px] font-semibold"
+                style={{ fontFamily: "'DM Mono', monospace", color: "#141318" }}
+              >
+                {inviteCode}
+              </span>
+              <button
+                className="text-[12px] font-semibold px-3 py-1.5 rounded-full"
+                style={{ background: "#EAE8FF", color: "#4F46E5" }}
+              >
+                コピー
+              </button>
+            </div>
+            <button
+              onClick={() => setShowInvite(false)}
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px]"
+              style={{ background: "#141318", color: "#fff" }}
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 共有範囲変更モーダル（要件⑤: 進捗のみ公開が既定、弱点内容は任意） */}
+      {showPrivacy && (
+        <div
+          className="absolute inset-0 flex items-end"
+          style={{ background: "#00000060", zIndex: 50 }}
+          onClick={() => setShowPrivacy(false)}
+        >
+          <div
+            className="w-full rounded-t-3xl p-6 space-y-4"
+            style={{ background: "#FFFFFF" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 rounded-full mx-auto" style={{ background: "#E8E7E2" }} />
+            <h3 className="font-bold text-[17px] mt-2">共有範囲を変更</h3>
+
+            <div
+              className="flex items-center justify-between rounded-2xl p-4"
+              style={{ background: "#F7F6F3", border: "1px solid #E8E7E2" }}
+            >
+              <div className="pr-3">
+                <p className="text-[13px] font-semibold">進捗（実行率・継続日数）</p>
+                <p className="text-[11px] mt-0.5" style={{ color: "#9391A0" }}>
+                  グループ内で常に共有されます
+                </p>
+              </div>
+              <div
+                className="w-11 h-6 rounded-full flex-shrink-0 flex items-center px-0.5"
+                style={{ background: "#4F46E5" }}
+              >
+                <div className="w-5 h-5 rounded-full ml-auto" style={{ background: "#fff" }} />
+              </div>
+            </div>
+
+            <div
+              className="flex items-center justify-between rounded-2xl p-4"
+              style={{ background: "#F7F6F3", border: "1px solid #E8E7E2" }}
+            >
+              <div className="pr-3">
+                <p className="text-[13px] font-semibold">弱点の内容</p>
+                <p className="text-[11px] mt-0.5" style={{ color: "#9391A0" }}>
+                  オフの場合、何に取り組んでいるかは非公開のままです
+                </p>
+              </div>
+              <button
+                onClick={() => setShareWeaknessContent((v) => !v)}
+                className="w-11 h-6 rounded-full flex-shrink-0 flex items-center px-0.5 transition-all"
+                style={{ background: shareWeaknessContent ? "#4F46E5" : "#E8E7E2" }}
+              >
+                <div
+                  className="w-5 h-5 rounded-full transition-all"
+                  style={{ background: "#fff", marginLeft: shareWeaknessContent ? "auto" : 0 }}
+                />
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowPrivacy(false)}
+              className="w-full py-3.5 rounded-2xl font-bold text-[14px]"
+              style={{ background: "#141318", color: "#fff" }}
+            >
+              保存する
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1001,11 +1297,7 @@ function SocialTab() {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("home");
-  const [actions, setActions] = useState<Action[]>(loadActions);
-
-  useEffect(() => {
-    localStorage.setItem(ACTIONS_STORAGE_KEY, JSON.stringify(actions));
-  }, [actions]);
+  const [actions, setActions] = useState<Action[]>(initialActions);
 
   const handleToggle = (id: string, done: boolean, reason?: string) => {
     setActions((prev) =>
@@ -1018,6 +1310,29 @@ export default function App() {
         };
       })
     );
+  };
+
+  // 要件②: チャットでの対策設計を、実際の Action として「今日」に追加する
+  const handleAddAction = (draft: {
+    weaknessLabel: string;
+    content: string;
+    frequency: string;
+    timing: string;
+    difficulty: number;
+  }) => {
+    setActions((prev) => [
+      ...prev,
+      {
+        id: `a${Date.now()}`,
+        weaknessId: `w${Date.now()}`,
+        weaknessLabel: draft.weaknessLabel,
+        content: draft.content,
+        frequency: draft.frequency,
+        timing: draft.timing,
+        difficulty: draft.difficulty,
+        logs: [],
+      },
+    ]);
   };
 
   const tabs: { id: Tab; label: string }[] = [
@@ -1039,8 +1354,12 @@ export default function App() {
     >
       {/* Content */}
       <div className="flex-1 overflow-hidden relative">
-        {tab === "home" && <HomeTab actions={actions} onToggle={handleToggle} />}
-        {tab === "chat" && <ChatTab />}
+        {tab === "home" && (
+          <HomeTab actions={actions} onToggle={handleToggle} onGoToChat={() => setTab("chat")} />
+        )}
+        {tab === "chat" && (
+          <ChatTab onCreateAction={handleAddAction} onGoHome={() => setTab("home")} />
+        )}
         {tab === "progress" && <ProgressTab actions={actions} />}
         {tab === "social" && <SocialTab />}
       </div>
